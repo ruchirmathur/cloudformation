@@ -1,0 +1,431 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "InstanceType": {
+            "Description": "WebServer EC2 instance type",
+            "Type": "String",
+            "Default": "t2.micro"
+        },
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+        },
+        "SSHLocation": {
+            "Description": " The IP address range that can be used to SSH to the EC2 instances",
+            "Type": "String",
+            "MinLength": "9",
+            "MaxLength": "18",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+        }
+    },
+    "Mappings": {
+        "AWSInstanceType2Arch": {
+            "t2.micro": {
+                "Arch": "HVM64"
+            }
+        },
+        "AWSInstanceType2NATArch": {
+            "t2.micro": {
+                "Arch": "NATHVM64"
+            }
+        },
+        "AWSRegionArch2AMI": {
+            "us-west-2": {
+                "HVM64": "ami-095cd038eef3e5074"
+            }
+        }
+    },
+    "Resources": {
+        "CleanTipsVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.0.0.0/16",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "9fec82ea-27e9-4946-855b-ebe5c1d8ad17"
+                }
+            }
+        },
+        "CleanTipsSubnet": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "CleanTipsVPC"
+                },
+                "CidrBlock": "10.0.0.0/24",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "7ebaea05-6f0f-400c-a2a5-a378d18002c2"
+                }
+            }
+        },
+        "CleanTipsInternetGateway": {
+            "Type": "AWS::EC2::InternetGateway",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "55f01470-9012-4405-b117-5a30186baf46"
+                }
+            }
+        },
+        "CleanTipsGatewayAttachment": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "InternetGatewayId": {
+                    "Ref": "CleanTipsInternetGateway"
+                },
+                "VpcId": {
+                    "Ref": "CleanTipsVPC"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "4c457751-cf9a-46cf-bb8e-f0daf9227591"
+                }
+            }
+        },
+        "CleanTipsRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "CleanTipsVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "22cb763f-25db-4d6f-86a8-fd45700eac89"
+                }
+            }
+        },
+        "CleanTipsRoute": {
+            "Type": "AWS::EC2::Route",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "CleanTipsRouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "CleanTipsInternetGateway"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "2f14d506-da85-476f-a921-93e7abb5a08c"
+                }
+            }
+        },
+        "CleanTipsSubnetRouteAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "CleanTipsRouteTable"
+                },
+                "SubnetId": {
+                    "Ref": "CleanTipsSubnet"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "352e5266-7eb5-4d58-b4d7-9d4503a463cc"
+                }
+            }
+        },
+        "CleanTipsSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupName": "WebserverSG",
+                "GroupDescription": "Enable SSH access via port 22",
+                "VpcId": {
+                    "Ref": "CleanTipsVPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 22,
+                        "ToPort": 22,
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ],
+                "SecurityGroupEgress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "53bf9032-b3f4-4e9c-a25b-47e9134759d6"
+                }
+            }
+        },
+        "CleanTipsInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AWSRegionArch2AMI",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        {
+                            "Fn::FindInMap": [
+                                "AWSInstanceType2Arch",
+                                {
+                                    "Ref": "InstanceType"
+                                },
+                                "Arch"
+                            ]
+                        }
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ],
+                "NetworkInterfaces": [
+                    {
+                        "GroupSet": [
+                            {
+                                "Ref": "CleanTipsSecurityGroup"
+                            }
+                        ],
+                        "AssociatePublicIpAddress": "true",
+                        "DeviceIndex": "0",
+                        "DeleteOnTermination": "true",
+                        "SubnetId": {
+                            "Ref": "CleanTipsSubnet"
+                        }
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "2943f878-822f-40eb-b71e-cd467a6ad2f7"
+                }
+            }
+        },
+        "CleanTipsEIP": {
+            "Type": "AWS::EC2::EIP",
+            "DependsOn": "CleanTipsGatewayAttachment",
+            "Properties": {
+                "Domain": "vpc",
+                "InstanceId": {
+                    "Ref": "CleanTipsInstance"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "a6c556dc-caca-4636-aa05-01228a40aac4"
+                }
+            }
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Designer": {
+            "2943f878-822f-40eb-b71e-cd467a6ad2f7": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 60,
+                    "y": 660
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "55f01470-9012-4405-b117-5a30186baf46": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 180,
+                    "y": 660
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "9fec82ea-27e9-4946-855b-ebe5c1d8ad17": {
+                "size": {
+                    "width": 1020,
+                    "height": 1170
+                },
+                "position": {
+                    "x": 60,
+                    "y": 180
+                },
+                "z": 1,
+                "embeds": [
+                    "53bf9032-b3f4-4e9c-a25b-47e9134759d6",
+                    "22cb763f-25db-4d6f-86a8-fd45700eac89",
+                    "7ebaea05-6f0f-400c-a2a5-a378d18002c2"
+                ]
+            },
+            "53bf9032-b3f4-4e9c-a25b-47e9134759d6": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 390,
+                    "y": 450
+                },
+                "z": 2,
+                "parent": "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                "embeds": [],
+                "iscontainedinside": [
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17"
+                ]
+            },
+            "22cb763f-25db-4d6f-86a8-fd45700eac89": {
+                "size": {
+                    "width": 360,
+                    "height": 570
+                },
+                "position": {
+                    "x": 90,
+                    "y": 240
+                },
+                "z": 2,
+                "parent": "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                "embeds": [
+                    "2f14d506-da85-476f-a921-93e7abb5a08c"
+                ],
+                "iscontainedinside": [
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17"
+                ]
+            },
+            "2f14d506-da85-476f-a921-93e7abb5a08c": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 120,
+                    "y": 480
+                },
+                "z": 3,
+                "parent": "22cb763f-25db-4d6f-86a8-fd45700eac89",
+                "embeds": [],
+                "isassociatedwith": [
+                    "55f01470-9012-4405-b117-5a30186baf46"
+                ],
+                "iscontainedinside": [
+                    "22cb763f-25db-4d6f-86a8-fd45700eac89",
+                    "22cb763f-25db-4d6f-86a8-fd45700eac89",
+                    "22cb763f-25db-4d6f-86a8-fd45700eac89"
+                ]
+            },
+            "4c457751-cf9a-46cf-bb8e-f0daf9227591": {
+                "source": {
+                    "id": "9fec82ea-27e9-4946-855b-ebe5c1d8ad17"
+                },
+                "target": {
+                    "id": "55f01470-9012-4405-b117-5a30186baf46"
+                },
+                "z": 1
+            },
+            "7ebaea05-6f0f-400c-a2a5-a378d18002c2": {
+                "size": {
+                    "width": 150,
+                    "height": 150
+                },
+                "position": {
+                    "x": 390,
+                    "y": 240
+                },
+                "z": 2,
+                "parent": "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                "embeds": [],
+                "iscontainedinside": [
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17",
+                    "9fec82ea-27e9-4946-855b-ebe5c1d8ad17"
+                ]
+            },
+            "352e5266-7eb5-4d58-b4d7-9d4503a463cc": {
+                "source": {
+                    "id": "22cb763f-25db-4d6f-86a8-fd45700eac89"
+                },
+                "target": {
+                    "id": "7ebaea05-6f0f-400c-a2a5-a378d18002c2"
+                },
+                "z": 2
+            },
+            "a6c556dc-caca-4636-aa05-01228a40aac4": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 1110,
+                    "y": 90
+                },
+                "z": 1,
+                "embeds": [],
+                "isassociatedwith": [
+                    "2943f878-822f-40eb-b71e-cd467a6ad2f7"
+                ],
+                "dependson": [
+                    "4c457751-cf9a-46cf-bb8e-f0daf9227591"
+                ]
+            }
+        }
+    }
+}
